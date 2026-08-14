@@ -2,7 +2,7 @@ import os
 import pickle
 import pandas as pd
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from tensorflow.keras.models import load_model
 
 
@@ -31,6 +31,11 @@ SCALER_PATH = os.path.join(
     "concrete_scaler.pkl"
 )
 
+PUBLIC_DIR = os.path.join(
+    BASE_DIR,
+    "public"
+)
+
 
 # ==========================================================
 # CHECK REQUIRED FILES
@@ -49,6 +54,9 @@ print(MODEL_PATH)
 print("\nScaler:")
 print(SCALER_PATH)
 
+print("\nFrontend:")
+print(PUBLIC_DIR)
+
 
 if not os.path.exists(MODEL_PATH):
 
@@ -66,8 +74,20 @@ if not os.path.exists(SCALER_PATH):
     )
 
 
+if not os.path.exists(
+    os.path.join(PUBLIC_DIR, "index.html")
+):
+
+    raise FileNotFoundError(
+        "\n❌ index.html was not found.\n"
+        f"Expected location:\n"
+        f"{os.path.join(PUBLIC_DIR, 'index.html')}"
+    )
+
+
 print("\n✅ Model file found!")
 print("✅ Scaler file found!")
+print("✅ Frontend file found!")
 
 
 # ==========================================================
@@ -92,6 +112,19 @@ print("✅ Scaler loaded successfully!")
 
 
 # ==========================================================
+# HOME PAGE
+# ==========================================================
+
+@app.route("/", methods=["GET"])
+def home():
+
+    return send_from_directory(
+        PUBLIC_DIR,
+        "index.html"
+    )
+
+
+# ==========================================================
 # PREDICTION ROUTE
 # ==========================================================
 
@@ -106,16 +139,37 @@ def predict():
         # GET INPUT VALUES
         # --------------------------------------------------
 
-        cement = float(data["cement"])
-        slag = float(data["slag"])
-        flyash = float(data["flyash"])
-        water = float(data["water"])
+        cement = float(
+            data["cement"]
+        )
+
+        slag = float(
+            data["slag"]
+        )
+
+        flyash = float(
+            data["flyash"]
+        )
+
+        water = float(
+            data["water"]
+        )
+
         superplasticizer = float(
             data["superplasticizer"]
         )
-        coarse = float(data["coarse"])
-        fine = float(data["fine"])
-        age = float(data["age"])
+
+        coarse = float(
+            data["coarse"]
+        )
+
+        fine = float(
+            data["fine"]
+        )
+
+        age = float(
+            data["age"]
+        )
 
 
         # --------------------------------------------------
