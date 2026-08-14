@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Concrete AI - Compressive Strength Prediction</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            color: #1f2937;
+        }
+
+        .header {
+            background: #166534;
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+
+        .header p {
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: 35px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .section-title {
+            margin-top: 0;
+            color: #166534;
+            text-align: center;
+        }
+
+        .inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 25px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .input-group input {
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            font-size: 16px;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #166534;
+        }
+
+        .predict-button {
+            width: 100%;
+            margin-top: 30px;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            background: #166534;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .predict-button:hover {
+            background: #14532d;
+        }
+
+        .predict-button:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 12px;
+            background: #ecfdf5;
+            border: 1px solid #86efac;
+        }
+
+        .strength {
+            text-align: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: #166534;
+        }
+
+        .grade {
+            text-align: center;
+            font-size: 22px;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        .recommendation {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        .error {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: #fee2e2;
+            color: #991b1b;
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        @media (max-width: 700px) {
+            .inputs {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 25px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+
+    <div class="header">
+
+        <h1>🏗️ Concrete AI</h1>
+
+        <p>
+            Concrete Compressive Strength Prediction System
+        </p>
+
+    </div>
+
+
+    <!-- MAIN CONTENT -->
+
+    <div class="container">
+
+        <div class="card">
+
+            <h2 class="section-title">
+                Enter Concrete Mix Information
+            </h2>
+
+            <p style="text-align:center;">
+                Enter the concrete mix proportions and curing age
+                to predict compressive strength.
+            </p>
+
+
+            <!-- INPUTS -->
+
+            <div class="inputs">
+
+                <div class="input-group">
+
+                    <label for="cement">
+                        Cement (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="cement"
+                        value="540"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="slag">
+                        Blast Furnace Slag (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="slag"
+                        value="0"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="flyash">
+                        Fly Ash (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="flyash"
+                        value="0"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="water">
+                        Water (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="water"
+                        value="162"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="superplasticizer">
+                        Superplasticizer (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="superplasticizer"
+                        value="2.5"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="coarse">
+                        Coarse Aggregate (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="coarse"
+                        value="1040"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="fine">
+                        Fine Aggregate (kg/m³)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="fine"
+                        value="676"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+                <div class="input-group">
+
+                    <label for="age">
+                        Age (Days)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="age"
+                        value="28"
+                        min="1"
+                        step="1"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <!-- BUTTON -->
+
+            <button
+                class="predict-button"
+                id="predictButton"
+                onclick="predictStrength()"
+            >
+                🔮 Predict Concrete Strength
+            </button>
+
+
+            <!-- LOADING -->
+
+            <div
+                class="loading"
+                id="loading"
+            >
+                ⏳ Predicting concrete strength...
+            </div>
+
+
+            <!-- ERROR -->
+
+            <div
+                class="error"
+                id="error"
+            >
+            </div>
+
+
+            <!-- RESULT -->
+
+            <div
+                class="result"
+                id="result"
+            >
+
+                <div class="strength">
+
+                    Predicted Compressive Strength:
+
+                    <span id="strength">
+                    </span>
+
+                    MPa
+
+                </div>
+
+
+                <div class="grade">
+
+                    Concrete Grade:
+
+                    <span id="grade">
+                    </span>
+
+                </div>
+
+
+                <div class="recommendation">
+
+                    <strong>
+                        Engineering Recommendation
+                    </strong>
+
+                    <p id="recommendation">
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="footer">
+
+            🏗️ Concrete AI
+
+            <br>
+
+            Developed using TensorFlow, Python and Vercel
+
+        </div>
+
+    </div>
+
+
+    <!-- JAVASCRIPT -->
+
+    <script>
+
+        async function predictStrength() {
+
+            const button =
+                document.getElementById("predictButton");
+
+            const loading =
+                document.getElementById("loading");
+
+            const result =
+                document.getElementById("result");
+
+            const error =
+                document.getElementById("error");
+
+
+            // Hide previous results
+
+            result.style.display = "none";
+
+            error.style.display = "none";
+
+
+            // Get input values
+
+            const cement =
+                parseFloat(
+                    document.getElementById("cement").value
+                );
+
+            const slag =
+                parseFloat(
+                    document.getElementById("slag").value
+                );
+
+            const flyash =
+                parseFloat(
+                    document.getElementById("flyash").value
+                );
+
+            const water =
+                parseFloat(
+                    document.getElementById("water").value
+                );
+
+            const superplasticizer =
+                parseFloat(
+                    document.getElementById("superplasticizer").value
+                );
+
+            const coarse =
+                parseFloat(
+                    document.getElementById("coarse").value
+                );
+
+            const fine =
+                parseFloat(
+                    document.getElementById("fine").value
+                );
+
+            const age =
+                parseFloat(
+                    document.getElementById("age").value
+                );
+
+
+            // Validate inputs
+
+            const values = [
+                cement,
+                slag,
+                flyash,
+                water,
+                superplasticizer,
+                coarse,
+                fine,
+                age
+            ];
+
+
+            if (values.some(value => isNaN(value))) {
+
+                error.innerText =
+                    "Please enter valid values in all fields.";
+
+                error.style.display = "block";
+
+                return;
+            }
+
+
+            // Disable button
+
+            button.disabled = true;
+
+            loading.style.display = "block";
+
+
+            try {
+
+                // Send data to Python API
+
+                const response = await fetch(
+                    "/api/predict",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            cement: cement,
+
+                            slag: slag,
+
+                            flyash: flyash,
+
+                            water: water,
+
+                            superplasticizer:
+                                superplasticizer,
+
+                            coarse: coarse,
+
+                            fine: fine,
+
+                            age: age
+
+                        })
+
+                    }
+                );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok || !data.success) {
+
+                    throw new Error(
+                        data.error ||
+                        "Prediction failed."
+                    );
+
+                }
+
+
+                // Display prediction
+
+                document.getElementById("strength")
+                    .innerText =
+                    data.strength.toFixed(2);
+
+
+                document.getElementById("grade")
+                    .innerText =
+                    data.grade;
+
+
+                document.getElementById("recommendation")
+                    .innerText =
+                    data.recommendation;
+
+
+                result.style.display = "block";
+
+
+            }
+
+            catch (err) {
+
+                error.innerText =
+                    "❌ Prediction error: " +
+                    err.message;
+
+                error.style.display = "block";
+
+            }
+
+            finally {
+
+                button.disabled = false;
+
+                loading.style.display = "none";
+
+            }
+
+        }
+
+    </script>
+
+</body>
+
+</html>
