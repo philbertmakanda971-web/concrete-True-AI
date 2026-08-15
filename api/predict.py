@@ -59,7 +59,6 @@ print(PUBLIC_DIR)
 
 
 if not os.path.exists(MODEL_PATH):
-
     raise FileNotFoundError(
         "\nconcrete_model.keras was not found.\n"
         f"Expected location:\n{MODEL_PATH}"
@@ -67,7 +66,6 @@ if not os.path.exists(MODEL_PATH):
 
 
 if not os.path.exists(SCALER_PATH):
-
     raise FileNotFoundError(
         "\nconcrete_scaler.pkl was not found.\n"
         f"Expected location:\n{SCALER_PATH}"
@@ -77,7 +75,6 @@ if not os.path.exists(SCALER_PATH):
 if not os.path.exists(
     os.path.join(PUBLIC_DIR, "index.html")
 ):
-
     raise FileNotFoundError(
         "\nindex.html was not found.\n"
         f"Expected location:\n"
@@ -104,11 +101,27 @@ print("Neural network loaded successfully!")
 # ==========================================================
 
 with open(SCALER_PATH, "rb") as f:
-
     scaler = pickle.load(f)
 
-
 print("Scaler loaded successfully!")
+
+
+# ==========================================================
+# DISPLAY SCALER FEATURE NAMES
+# ==========================================================
+
+if hasattr(scaler, "feature_names_in_"):
+
+    print("\nScaler feature names:")
+
+    for feature in scaler.feature_names_in_:
+        print("-", feature)
+
+else:
+
+    print(
+        "\nScaler does not contain feature_names_in_."
+    )
 
 
 # ==========================================================
@@ -137,7 +150,9 @@ def predict():
         # CHECK REQUEST DATA
         # --------------------------------------------------
 
-        data = request.get_json(silent=True)
+        data = request.get_json(
+            silent=True
+        )
 
         if data is None:
 
@@ -185,37 +200,92 @@ def predict():
 
 
         # --------------------------------------------------
-        # CREATE DATAFRAME
+        # COLLECT VALUES IN TRAINING ORDER
         # --------------------------------------------------
 
-        input_data = pd.DataFrame(
-            [[
-                cement,
-                slag,
-                flyash,
-                water,
-                superplasticizer,
-                coarse,
-                fine,
-                age
-            ]],
-            columns=[
-                "Cement (component 1)(kg in a m^3 mixture)",
+        values = [
+            cement,
+            slag,
+            flyash,
+            water,
+            superplasticizer,
+            coarse,
+            fine,
+            age
+        ]
 
-                "Blast Furnace Slag (component 2)(kg in a m^3 mixture)",
 
-                "Fly Ash (component 3)(kg in a m^3 mixture)",
+        # --------------------------------------------------
+        # CREATE DATAFRAME
+        # USING EXACT SCALER FEATURE NAMES
+        # --------------------------------------------------
 
-                "Water (component 4)(kg in a m^3 mixture)",
+        if hasattr(
+            scaler,
+            "feature_names_in_"
+        ):
 
-                "Superplasticizer (component 5)(kg in a m^3 mixture)",
+            expected_columns = list(
+                scaler.feature_names_in_
+            )
 
-                "Coarse Aggregate (component 6)(kg in a m^3 mixture)",
+            print(
+                "\nScaler expects these columns:"
+            )
 
-                "Fine Aggregate (component 7)(kg in a m^3 mixture)",
+            print(
+                expected_columns
+            )
 
-                "Age (day)"
-            ]
+
+            # ----------------------------------------------
+            # CHECK NUMBER OF FEATURES
+            # ----------------------------------------------
+
+            if len(expected_columns) != len(values):
+
+                raise ValueError(
+                    "Feature count mismatch. "
+                    f"The scaler expects "
+                    f"{len(expected_columns)} "
+                    f"features, but the API "
+                    f"received {len(values)}."
+                )
+
+
+            input_data = pd.DataFrame(
+                [values],
+                columns=expected_columns
+            )
+
+
+        else:
+
+            # ----------------------------------------------
+            # FALLBACK FEATURE NAMES
+            # ----------------------------------------------
+
+            input_data = pd.DataFrame(
+                [values],
+                columns=[
+                    "Cement (component 1)(kg in a m^3 mixture)",
+                    "Blast Furnace Slag (component 2)(kg in a m^3 mixture)",
+                    "Fly Ash (component 3)(kg in a m^3 mixture)",
+                    "Water (component 4)(kg in a m^3 mixture)",
+                    "Superplasticizer (component 5)(kg in a m^3 mixture)",
+                    "Coarse Aggregate (component 6)(kg in a m^3 mixture)",
+                    "Fine Aggregate (component 7)(kg in a m^3 mixture)",
+                    "Age (day)"
+                ]
+            )
+
+
+        print(
+            "\nInput DataFrame:"
+        )
+
+        print(
+            input_data
         )
 
 
@@ -225,6 +295,10 @@ def predict():
 
         input_scaled = scaler.transform(
             input_data
+        )
+
+        print(
+            "\nInput scaled successfully!"
         )
 
 
@@ -239,6 +313,11 @@ def predict():
 
         strength = float(
             prediction[0][0]
+        )
+
+        print(
+            "\nPredicted strength:",
+            strength
         )
 
 
@@ -344,9 +423,8 @@ def predict():
 
             "success": False,
 
-            "error": (
+            "error":
                 f"Missing input field: {str(e)}"
-            )
 
         }), 400
 
@@ -361,9 +439,8 @@ def predict():
 
             "success": False,
 
-            "error": (
+            "error":
                 f"Invalid input value: {str(e)}"
-            )
 
         }), 400
 
@@ -375,7 +452,7 @@ def predict():
     except Exception as e:
 
         print(
-            "Prediction error:",
+            "\nPrediction error:",
             str(e)
         )
 
