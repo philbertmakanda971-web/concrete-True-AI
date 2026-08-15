@@ -1,17 +1,10 @@
 import os
 import pickle
+import numpy as np
 import pandas as pd
 
-# ==========================================================
-# LIMIT TENSORFLOW RESOURCES
-# ==========================================================
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
-os.environ["TF_NUM_INTEROP_THREADS"] = "1"
-
 from flask import Flask, request, jsonify, send_from_directory
+
 
 # ==========================================================
 # FLASK APP
@@ -19,17 +12,13 @@ from flask import Flask, request, jsonify, send_from_directory
 
 app = Flask(__name__)
 
+
 # ==========================================================
-# PROJECT DIRECTORY
+# PROJECT DIRECTORIES
 # ==========================================================
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
-)
-
-MODEL_PATH = os.path.join(
-    BASE_DIR,
-    "concrete_model.keras"
 )
 
 SCALER_PATH = os.path.join(
@@ -37,136 +26,217 @@ SCALER_PATH = os.path.join(
     "concrete_scaler.pkl"
 )
 
+WEIGHTS_PATH = os.path.join(
+    BASE_DIR,
+    "model_weights.pkl"
+)
+
 PUBLIC_DIR = os.path.join(
     BASE_DIR,
     "public"
 )
 
+
 # ==========================================================
-# GLOBAL MODEL VARIABLES
+# CHECK FILES
 # ==========================================================
 
-model = None
-scaler = None
+print("=" * 60)
+print("CONCRETE AI - NUMPY PREDICTION API")
+print("=" * 60)
+
+print("Project folder:")
+print(BASE_DIR)
+
+print("Scaler:")
+print(SCALER_PATH)
+
+print("Weights:")
+print(WEIGHTS_PATH)
+
+print("Frontend:")
+print(PUBLIC_DIR)
+
+
+if not os.path.exists(SCALER_PATH):
+    raise FileNotFoundError(
+        f"concrete_scaler.pkl was not found:\n{SCALER_PATH}"
+    )
+
+
+if not os.path.exists(WEIGHTS_PATH):
+    raise FileNotFoundError(
+        f"model_weights.pkl was not found:\n{WEIGHTS_PATH}"
+    )
+
+
+if not os.path.exists(
+    os.path.join(PUBLIC_DIR, "index.html")
+):
+    raise FileNotFoundError(
+        f"index.html was not found:\n"
+        f"{os.path.join(PUBLIC_DIR, 'index.html')}"
+    )
+
+
+print("Scaler found!")
+print("Model weights found!")
+print("Frontend found!")
 
 
 # ==========================================================
 # LOAD SCALER
 # ==========================================================
 
-def load_scaler():
+print("Loading scaler...")
 
-    global scaler
+with open(SCALER_PATH, "rb") as f:
+    scaler = pickle.load(f)
 
-    if scaler is not None:
-        return scaler
-
-    print("=" * 60)
-    print("Loading scaler...")
-    print("=" * 60)
-
-    if not os.path.exists(SCALER_PATH):
-        raise FileNotFoundError(
-            f"concrete_scaler.pkl was not found: {SCALER_PATH}"
-        )
-
-    with open(SCALER_PATH, "rb") as f:
-        scaler = pickle.load(f)
-
-    print("Scaler loaded successfully!")
-
-    if hasattr(scaler, "feature_names_in_"):
-
-        print("Scaler feature names:")
-
-        for feature in scaler.feature_names_in_:
-            print("-", feature)
-
-    return scaler
+print("Scaler loaded successfully!")
 
 
 # ==========================================================
-# LOAD MODEL ONLY WHEN NEEDED
+# LOAD MODEL WEIGHTS
 # ==========================================================
 
-def load_tensorflow_model():
+print("Loading neural-network weights...")
 
-    global model
+with open(WEIGHTS_PATH, "rb") as f:
+    weights = pickle.load(f)
 
-    if model is not None:
-        return model
+print("Model weights loaded successfully!")
 
-    print("=" * 60)
-    print("Loading TensorFlow model...")
-    print("=" * 60)
-
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"concrete_model.keras was not found: {MODEL_PATH}"
-        )
-
-    # Import TensorFlow only when prediction is requested
-    import tensorflow as tf
-
-    try:
-        tf.config.threading.set_intra_op_parallelism_threads(1)
-        tf.config.threading.set_inter_op_parallelism_threads(1)
-    except Exception:
-        pass
-
-    model = tf.keras.models.load_model(
-        MODEL_PATH,
-        compile=False
-    )
-
-    print("Neural network loaded successfully!")
-
-    return model
+print("Layers:")
+for layer_name in weights:
+    print("-", layer_name)
 
 
 # ==========================================================
-# STARTUP CHECK
+# ACTIVATION FUNCTIONS
 # ==========================================================
 
-print("=" * 60)
-print("CONCRETE AI API")
-print("=" * 60)
+def relu(x):
+    return np.maximum(0, x)
 
-print("Project folder:")
-print(BASE_DIR)
 
-print("Model:")
-print(MODEL_PATH)
+# ==========================================================
+# BATCH NORMALIZATION
+# ==========================================================
 
-print("Scaler:")
-print(SCALER_PATH)
-
-print("Frontend:")
-print(PUBLIC_DIR)
-
-# Check files WITHOUT loading TensorFlow
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(
-        f"concrete_model.keras was not found: {MODEL_PATH}"
-    )
-
-if not os.path.exists(SCALER_PATH):
-    raise FileNotFoundError(
-        f"concrete_scaler.pkl was not found: {SCALER_PATH}"
-    )
-
-if not os.path.exists(
-    os.path.join(PUBLIC_DIR, "index.html")
+def batch_normalization(
+    x,
+    gamma,
+    beta,
+    moving_mean,
+    moving_variance,
+    epsilon=0.001
 ):
-    raise FileNotFoundError(
-        f"index.html was not found: "
-        f"{os.path.join(PUBLIC_DIR, 'index.html')}"
+
+    return (
+        gamma
+        * (
+            (x - moving_mean)
+            / np.sqrt(moving_variance + epsilon)
+        )
+        + beta
     )
 
-print("Model file found!")
-print("Scaler file found!")
-print("Frontend file found!")
-print("TensorFlow model will load when prediction is requested.")
+
+# ==========================================================
+# NUMPY MODEL PREDICTION
+# ==========================================================
+
+def predict_numpy(x):
+
+    # ------------------------------------------------------
+    # DENSE
+    # ------------------------------------------------------
+
+    kernel, bias = weights["dense"]
+
+    x = np.dot(x, np.array(kernel)) + np.array(bias)
+
+    x = relu(x)
+
+
+    # ------------------------------------------------------
+    # BATCH NORMALIZATION
+    # ------------------------------------------------------
+
+    gamma, beta, moving_mean, moving_variance = (
+        weights["batch_normalization"]
+    )
+
+    x = batch_normalization(
+        x,
+        np.array(gamma),
+        np.array(beta),
+        np.array(moving_mean),
+        np.array(moving_variance)
+    )
+
+
+    # ------------------------------------------------------
+    # DENSE 1
+    # ------------------------------------------------------
+
+    kernel, bias = weights["dense_1"]
+
+    x = np.dot(x, np.array(kernel)) + np.array(bias)
+
+    x = relu(x)
+
+
+    # ------------------------------------------------------
+    # BATCH NORMALIZATION 1
+    # ------------------------------------------------------
+
+    gamma, beta, moving_mean, moving_variance = (
+        weights["batch_normalization_1"]
+    )
+
+    x = batch_normalization(
+        x,
+        np.array(gamma),
+        np.array(beta),
+        np.array(moving_mean),
+        np.array(moving_variance)
+    )
+
+
+    # ------------------------------------------------------
+    # DENSE 2
+    # ------------------------------------------------------
+
+    kernel, bias = weights["dense_2"]
+
+    x = np.dot(x, np.array(kernel)) + np.array(bias)
+
+    x = relu(x)
+
+
+    # ------------------------------------------------------
+    # DENSE 3
+    # ------------------------------------------------------
+
+    kernel, bias = weights["dense_3"]
+
+    x = np.dot(x, np.array(kernel)) + np.array(bias)
+
+    x = relu(x)
+
+
+    # ------------------------------------------------------
+    # OUTPUT
+    # ------------------------------------------------------
+
+    kernel, bias = weights["dense_4"]
+
+    x = np.dot(x, np.array(kernel)) + np.array(bias)
+
+
+    return float(x[0][0])
 
 
 # ==========================================================
@@ -183,23 +253,13 @@ def home():
 
 
 # ==========================================================
-# HEALTH CHECK
-# ==========================================================
-
-@app.route("/health", methods=["GET"])
-def health():
-
-    return jsonify({
-        "status": "healthy",
-        "service": "Concrete AI API"
-    }), 200
-
-
-# ==========================================================
 # PREDICTION API
 # ==========================================================
 
-@app.route("/api/predict", methods=["POST"])
+@app.route(
+    "/api/predict",
+    methods=["POST"]
+)
 def predict():
 
     try:
@@ -208,11 +268,14 @@ def predict():
         print("PREDICTION REQUEST RECEIVED")
         print("=" * 60)
 
+
         # --------------------------------------------------
         # GET JSON
         # --------------------------------------------------
 
-        data = request.get_json(silent=True)
+        data = request.get_json(
+            silent=True
+        )
 
         if data is None:
 
@@ -221,20 +284,43 @@ def predict():
                 "error": "No JSON data was received."
             }), 400
 
+
         # --------------------------------------------------
-        # READ VALUES
+        # READ INPUT VALUES
         # --------------------------------------------------
 
-        cement = float(data["cement"])
-        slag = float(data["slag"])
-        flyash = float(data["flyash"])
-        water = float(data["water"])
+        cement = float(
+            data["cement"]
+        )
+
+        slag = float(
+            data["slag"]
+        )
+
+        flyash = float(
+            data["flyash"]
+        )
+
+        water = float(
+            data["water"]
+        )
+
         superplasticizer = float(
             data["superplasticizer"]
         )
-        coarse = float(data["coarse"])
-        fine = float(data["fine"])
-        age = float(data["age"])
+
+        coarse = float(
+            data["coarse"]
+        )
+
+        fine = float(
+            data["fine"]
+        )
+
+        age = float(
+            data["age"]
+        )
+
 
         # --------------------------------------------------
         # VALUES IN TRAINING ORDER
@@ -251,33 +337,19 @@ def predict():
             age
         ]
 
-        # --------------------------------------------------
-        # LOAD SCALER
-        # --------------------------------------------------
-
-        current_scaler = load_scaler()
 
         # --------------------------------------------------
         # CREATE DATAFRAME
         # --------------------------------------------------
 
         if hasattr(
-            current_scaler,
+            scaler,
             "feature_names_in_"
         ):
 
             expected_columns = list(
-                current_scaler.feature_names_in_
+                scaler.feature_names_in_
             )
-
-            if len(expected_columns) != len(values):
-
-                return jsonify({
-                    "success": False,
-                    "error":
-                    "Scaler feature count does not "
-                    "match the model input."
-                }), 500
 
             input_data = pd.DataFrame(
                 [values],
@@ -300,61 +372,64 @@ def predict():
                 ]
             )
 
+
         # --------------------------------------------------
-        # SCALE
+        # SCALE INPUT
         # --------------------------------------------------
 
-        input_scaled = current_scaler.transform(
+        input_scaled = scaler.transform(
             input_data
         )
 
         print("Input scaled successfully!")
 
-        # --------------------------------------------------
-        # LOAD TENSORFLOW MODEL
-        # --------------------------------------------------
-
-        current_model = load_tensorflow_model()
 
         # --------------------------------------------------
-        # PREDICTION
+        # NUMPY PREDICTION
         # --------------------------------------------------
 
-        prediction = current_model.predict(
-            input_scaled,
-            verbose=0
+        strength = predict_numpy(
+            input_scaled
         )
 
-        strength = float(
-            prediction[0][0]
+        print(
+            "Predicted strength:",
+            strength
         )
 
-        print("Predicted strength:", strength)
 
         # --------------------------------------------------
         # GRADE
         # --------------------------------------------------
 
         if strength < 20:
+
             grade = "Below C20"
 
         elif strength < 25:
+
             grade = "C20"
 
         elif strength < 30:
+
             grade = "C25"
 
         elif strength < 35:
+
             grade = "C30"
 
         elif strength < 40:
+
             grade = "C35"
 
         elif strength < 50:
+
             grade = "C40"
 
         else:
+
             grade = "High Strength Concrete"
+
 
         # --------------------------------------------------
         # RECOMMENDATION
@@ -394,6 +469,7 @@ def predict():
                 "through laboratory testing and design."
             )
 
+
         # --------------------------------------------------
         # RETURN RESULT
         # --------------------------------------------------
@@ -413,6 +489,7 @@ def predict():
 
         }), 200
 
+
     # ======================================================
     # MISSING FIELD
     # ======================================================
@@ -428,6 +505,7 @@ def predict():
 
         }), 400
 
+
     # ======================================================
     # INVALID VALUE
     # ======================================================
@@ -442,6 +520,7 @@ def predict():
             f"Invalid input value: {str(e)}"
 
         }), 400
+
 
     # ======================================================
     # OTHER ERROR
