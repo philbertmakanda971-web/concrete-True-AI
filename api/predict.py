@@ -61,7 +61,7 @@ print(PUBLIC_DIR)
 if not os.path.exists(MODEL_PATH):
 
     raise FileNotFoundError(
-        "\n❌ concrete_model.keras was not found.\n"
+        "\nconcrete_model.keras was not found.\n"
         f"Expected location:\n{MODEL_PATH}"
     )
 
@@ -69,7 +69,7 @@ if not os.path.exists(MODEL_PATH):
 if not os.path.exists(SCALER_PATH):
 
     raise FileNotFoundError(
-        "\n❌ concrete_scaler.pkl was not found.\n"
+        "\nconcrete_scaler.pkl was not found.\n"
         f"Expected location:\n{SCALER_PATH}"
     )
 
@@ -79,15 +79,15 @@ if not os.path.exists(
 ):
 
     raise FileNotFoundError(
-        "\n❌ index.html was not found.\n"
+        "\nindex.html was not found.\n"
         f"Expected location:\n"
         f"{os.path.join(PUBLIC_DIR, 'index.html')}"
     )
 
 
-print("\n✅ Model file found!")
-print("✅ Scaler file found!")
-print("✅ Frontend file found!")
+print("\nModel file found!")
+print("Scaler file found!")
+print("Frontend file found!")
 
 
 # ==========================================================
@@ -96,7 +96,7 @@ print("✅ Frontend file found!")
 
 model = load_model(MODEL_PATH)
 
-print("✅ Neural network loaded successfully!")
+print("Neural network loaded successfully!")
 
 
 # ==========================================================
@@ -108,7 +108,7 @@ with open(SCALER_PATH, "rb") as f:
     scaler = pickle.load(f)
 
 
-print("✅ Scaler loaded successfully!")
+print("Scaler loaded successfully!")
 
 
 # ==========================================================
@@ -133,7 +133,19 @@ def predict():
 
     try:
 
-        data = request.get_json()
+        # --------------------------------------------------
+        # CHECK REQUEST DATA
+        # --------------------------------------------------
+
+        data = request.get_json(silent=True)
+
+        if data is None:
+
+            return jsonify({
+                "success": False,
+                "error": "No JSON data was received."
+            }), 400
+
 
         # --------------------------------------------------
         # GET INPUT VALUES
@@ -189,12 +201,19 @@ def predict():
             ]],
             columns=[
                 "Cement (component 1)(kg in a m^3 mixture)",
+
                 "Blast Furnace Slag (component 2)(kg in a m^3 mixture)",
+
                 "Fly Ash (component 3)(kg in a m^3 mixture)",
-                "Water  (component 4)(kg in a m^3 mixture)",
+
+                "Water (component 4)(kg in a m^3 mixture)",
+
                 "Superplasticizer (component 5)(kg in a m^3 mixture)",
-                "Coarse Aggregate  (component 6)(kg in a m^3 mixture)",
+
+                "Coarse Aggregate (component 6)(kg in a m^3 mixture)",
+
                 "Fine Aggregate (component 7)(kg in a m^3 mixture)",
+
                 "Age (day)"
             ]
         )
@@ -310,13 +329,55 @@ def predict():
 
             "grade": grade,
 
-            "recommendation":
-                recommendation
+            "recommendation": recommendation
 
-        })
+        }), 200
 
+
+    # ======================================================
+    # HANDLE MISSING INPUT
+    # ======================================================
+
+    except KeyError as e:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": (
+                f"Missing input field: {str(e)}"
+            )
+
+        }), 400
+
+
+    # ======================================================
+    # HANDLE INVALID INPUT
+    # ======================================================
+
+    except ValueError as e:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": (
+                f"Invalid input value: {str(e)}"
+            )
+
+        }), 400
+
+
+    # ======================================================
+    # HANDLE OTHER ERRORS
+    # ======================================================
 
     except Exception as e:
+
+        print(
+            "Prediction error:",
+            str(e)
+        )
 
         return jsonify({
 
