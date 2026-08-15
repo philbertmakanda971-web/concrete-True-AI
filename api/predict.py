@@ -2,8 +2,26 @@ import os
 import pickle
 import pandas as pd
 
+# Limit TensorFlow resources BEFORE importing TensorFlow
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+
 from flask import Flask, request, jsonify, send_from_directory
+import tensorflow as tf
 from tensorflow.keras.models import load_model
+
+
+# ==========================================================
+# TENSORFLOW THREAD SETTINGS
+# ==========================================================
+
+try:
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+except Exception:
+    pass
 
 
 # ==========================================================
@@ -38,7 +56,7 @@ PUBLIC_DIR = os.path.join(
 
 
 # ==========================================================
-# CHECK REQUIRED FILES
+# CHECK FILES
 # ==========================================================
 
 print("=" * 60)
@@ -48,27 +66,25 @@ print("=" * 60)
 print("Project folder:")
 print(BASE_DIR)
 
-print("\nModel:")
+print("Model:")
 print(MODEL_PATH)
 
-print("\nScaler:")
+print("Scaler:")
 print(SCALER_PATH)
 
-print("\nFrontend:")
+print("Frontend:")
 print(PUBLIC_DIR)
 
 
 if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(
-        "\nconcrete_model.keras was not found.\n"
-        f"Expected location:\n{MODEL_PATH}"
+        f"concrete_model.keras was not found:\n{MODEL_PATH}"
     )
 
 
 if not os.path.exists(SCALER_PATH):
     raise FileNotFoundError(
-        "\nconcrete_scaler.pkl was not found.\n"
-        f"Expected location:\n{SCALER_PATH}"
+        f"concrete_scaler.pkl was not found:\n{SCALER_PATH}"
     )
 
 
@@ -76,13 +92,12 @@ if not os.path.exists(
     os.path.join(PUBLIC_DIR, "index.html")
 ):
     raise FileNotFoundError(
-        "\nindex.html was not found.\n"
-        f"Expected location:\n"
+        f"index.html was not found:\n"
         f"{os.path.join(PUBLIC_DIR, 'index.html')}"
     )
 
 
-print("\nModel file found!")
+print("Model file found!")
 print("Scaler file found!")
 print("Frontend file found!")
 
@@ -91,7 +106,12 @@ print("Frontend file found!")
 # LOAD MODEL
 # ==========================================================
 
-model = load_model(MODEL_PATH)
+print("Loading TensorFlow model...")
+
+model = load_model(
+    MODEL_PATH,
+    compile=False
+)
 
 print("Neural network loaded successfully!")
 
@@ -107,21 +127,15 @@ print("Scaler loaded successfully!")
 
 
 # ==========================================================
-# DISPLAY SCALER FEATURE NAMES
+# DISPLAY SCALER FEATURES
 # ==========================================================
 
 if hasattr(scaler, "feature_names_in_"):
 
-    print("\nScaler feature names:")
+    print("Scaler feature names:")
 
     for feature in scaler.feature_names_in_:
         print("-", feature)
-
-else:
-
-    print(
-        "\nScaler does not contain feature_names_in_."
-    )
 
 
 # ==========================================================
@@ -138,7 +152,7 @@ def home():
 
 
 # ==========================================================
-# PREDICTION ROUTE
+# PREDICTION API
 # ==========================================================
 
 @app.route("/api/predict", methods=["POST"])
@@ -147,12 +161,10 @@ def predict():
     try:
 
         # --------------------------------------------------
-        # CHECK REQUEST DATA
+        # GET JSON
         # --------------------------------------------------
 
-        data = request.get_json(
-            silent=True
-        )
+        data = request.get_json(silent=True)
 
         if data is None:
 
@@ -163,44 +175,23 @@ def predict():
 
 
         # --------------------------------------------------
-        # GET INPUT VALUES
+        # READ VALUES
         # --------------------------------------------------
 
-        cement = float(
-            data["cement"]
-        )
-
-        slag = float(
-            data["slag"]
-        )
-
-        flyash = float(
-            data["flyash"]
-        )
-
-        water = float(
-            data["water"]
-        )
-
+        cement = float(data["cement"])
+        slag = float(data["slag"])
+        flyash = float(data["flyash"])
+        water = float(data["water"])
         superplasticizer = float(
             data["superplasticizer"]
         )
-
-        coarse = float(
-            data["coarse"]
-        )
-
-        fine = float(
-            data["fine"]
-        )
-
-        age = float(
-            data["age"]
-        )
+        coarse = float(data["coarse"])
+        fine = float(data["fine"])
+        age = float(data["age"])
 
 
         # --------------------------------------------------
-        # COLLECT VALUES IN TRAINING ORDER
+        # VALUES IN TRAINING ORDER
         # --------------------------------------------------
 
         values = [
@@ -216,8 +207,7 @@ def predict():
 
 
         # --------------------------------------------------
-        # CREATE DATAFRAME
-        # USING EXACT SCALER FEATURE NAMES
+        # USE EXACT SCALER COLUMN NAMES
         # --------------------------------------------------
 
         if hasattr(
@@ -229,41 +219,21 @@ def predict():
                 scaler.feature_names_in_
             )
 
-            print(
-                "\nScaler expects these columns:"
-            )
-
-            print(
-                expected_columns
-            )
-
-
-            # ----------------------------------------------
-            # CHECK NUMBER OF FEATURES
-            # ----------------------------------------------
-
             if len(expected_columns) != len(values):
 
-                raise ValueError(
-                    "Feature count mismatch. "
-                    f"The scaler expects "
-                    f"{len(expected_columns)} "
-                    f"features, but the API "
-                    f"received {len(values)}."
-                )
-
+                return jsonify({
+                    "success": False,
+                    "error":
+                    "Scaler feature count does not "
+                    "match the model input."
+                }), 500
 
             input_data = pd.DataFrame(
                 [values],
                 columns=expected_columns
             )
 
-
         else:
-
-            # ----------------------------------------------
-            # FALLBACK FEATURE NAMES
-            # ----------------------------------------------
 
             input_data = pd.DataFrame(
                 [values],
@@ -271,39 +241,26 @@ def predict():
                     "Cement (component 1)(kg in a m^3 mixture)",
                     "Blast Furnace Slag (component 2)(kg in a m^3 mixture)",
                     "Fly Ash (component 3)(kg in a m^3 mixture)",
-                    "Water (component 4)(kg in a m^3 mixture)",
+                    "Water  (component 4)(kg in a m^3 mixture)",
                     "Superplasticizer (component 5)(kg in a m^3 mixture)",
-                    "Coarse Aggregate (component 6)(kg in a m^3 mixture)",
+                    "Coarse Aggregate  (component 6)(kg in a m^3 mixture)",
                     "Fine Aggregate (component 7)(kg in a m^3 mixture)",
                     "Age (day)"
                 ]
             )
 
 
-        print(
-            "\nInput DataFrame:"
-        )
-
-        print(
-            input_data
-        )
-
-
         # --------------------------------------------------
-        # SCALE INPUT
+        # SCALE
         # --------------------------------------------------
 
         input_scaled = scaler.transform(
             input_data
         )
 
-        print(
-            "\nInput scaled successfully!"
-        )
-
 
         # --------------------------------------------------
-        # PREDICTION
+        # PREDICT
         # --------------------------------------------------
 
         prediction = model.predict(
@@ -315,14 +272,9 @@ def predict():
             prediction[0][0]
         )
 
-        print(
-            "\nPredicted strength:",
-            strength
-        )
-
 
         # --------------------------------------------------
-        # CONCRETE GRADE
+        # GRADE
         # --------------------------------------------------
 
         if strength < 20:
@@ -355,7 +307,7 @@ def predict():
 
 
         # --------------------------------------------------
-        # ENGINEERING RECOMMENDATION
+        # RECOMMENDATION
         # --------------------------------------------------
 
         if strength < 20:
@@ -414,7 +366,7 @@ def predict():
 
 
     # ======================================================
-    # HANDLE MISSING INPUT
+    # MISSING FIELD
     # ======================================================
 
     except KeyError as e:
@@ -424,13 +376,13 @@ def predict():
             "success": False,
 
             "error":
-                f"Missing input field: {str(e)}"
+            f"Missing input field: {str(e)}"
 
         }), 400
 
 
     # ======================================================
-    # HANDLE INVALID INPUT
+    # INVALID VALUE
     # ======================================================
 
     except ValueError as e:
@@ -440,19 +392,19 @@ def predict():
             "success": False,
 
             "error":
-                f"Invalid input value: {str(e)}"
+            f"Invalid input value: {str(e)}"
 
         }), 400
 
 
     # ======================================================
-    # HANDLE OTHER ERRORS
+    # OTHER ERROR
     # ======================================================
 
     except Exception as e:
 
         print(
-            "\nPrediction error:",
+            "Prediction error:",
             str(e)
         )
 
@@ -466,7 +418,7 @@ def predict():
 
 
 # ==========================================================
-# RUN LOCALLY
+# LOCAL DEVELOPMENT
 # ==========================================================
 
 if __name__ == "__main__":
@@ -474,5 +426,5 @@ if __name__ == "__main__":
     app.run(
         host="127.0.0.1",
         port=5000,
-        debug=True
+        debug=False
     )
