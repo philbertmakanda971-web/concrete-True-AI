@@ -2,34 +2,22 @@ import os
 import pickle
 import pandas as pd
 
-# Limit TensorFlow resources BEFORE importing TensorFlow
+# ==========================================================
+# LIMIT TENSORFLOW RESOURCES
+# ==========================================================
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
 os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 
 from flask import Flask, request, jsonify, send_from_directory
-import tensorflow as tf
-from tensorflow.keras.models import load_model
-
-
-# ==========================================================
-# TENSORFLOW THREAD SETTINGS
-# ==========================================================
-
-try:
-    tf.config.threading.set_intra_op_parallelism_threads(1)
-    tf.config.threading.set_inter_op_parallelism_threads(1)
-except Exception:
-    pass
-
 
 # ==========================================================
 # FLASK APP
 # ==========================================================
 
 app = Flask(__name__)
-
 
 # ==========================================================
 # PROJECT DIRECTORY
@@ -54,9 +42,90 @@ PUBLIC_DIR = os.path.join(
     "public"
 )
 
+# ==========================================================
+# GLOBAL MODEL VARIABLES
+# ==========================================================
+
+model = None
+scaler = None
+
 
 # ==========================================================
-# CHECK FILES
+# LOAD SCALER
+# ==========================================================
+
+def load_scaler():
+
+    global scaler
+
+    if scaler is not None:
+        return scaler
+
+    print("=" * 60)
+    print("Loading scaler...")
+    print("=" * 60)
+
+    if not os.path.exists(SCALER_PATH):
+        raise FileNotFoundError(
+            f"concrete_scaler.pkl was not found: {SCALER_PATH}"
+        )
+
+    with open(SCALER_PATH, "rb") as f:
+        scaler = pickle.load(f)
+
+    print("Scaler loaded successfully!")
+
+    if hasattr(scaler, "feature_names_in_"):
+
+        print("Scaler feature names:")
+
+        for feature in scaler.feature_names_in_:
+            print("-", feature)
+
+    return scaler
+
+
+# ==========================================================
+# LOAD MODEL ONLY WHEN NEEDED
+# ==========================================================
+
+def load_tensorflow_model():
+
+    global model
+
+    if model is not None:
+        return model
+
+    print("=" * 60)
+    print("Loading TensorFlow model...")
+    print("=" * 60)
+
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"concrete_model.keras was not found: {MODEL_PATH}"
+        )
+
+    # Import TensorFlow only when prediction is requested
+    import tensorflow as tf
+
+    try:
+        tf.config.threading.set_intra_op_parallelism_threads(1)
+        tf.config.threading.set_inter_op_parallelism_threads(1)
+    except Exception:
+        pass
+
+    model = tf.keras.models.load_model(
+        MODEL_PATH,
+        compile=False
+    )
+
+    print("Neural network loaded successfully!")
+
+    return model
+
+
+# ==========================================================
+# STARTUP CHECK
 # ==========================================================
 
 print("=" * 60)
@@ -75,67 +144,29 @@ print(SCALER_PATH)
 print("Frontend:")
 print(PUBLIC_DIR)
 
-
+# Check files WITHOUT loading TensorFlow
 if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(
-        f"concrete_model.keras was not found:\n{MODEL_PATH}"
+        f"concrete_model.keras was not found: {MODEL_PATH}"
     )
-
 
 if not os.path.exists(SCALER_PATH):
     raise FileNotFoundError(
-        f"concrete_scaler.pkl was not found:\n{SCALER_PATH}"
+        f"concrete_scaler.pkl was not found: {SCALER_PATH}"
     )
-
 
 if not os.path.exists(
     os.path.join(PUBLIC_DIR, "index.html")
 ):
     raise FileNotFoundError(
-        f"index.html was not found:\n"
+        f"index.html was not found: "
         f"{os.path.join(PUBLIC_DIR, 'index.html')}"
     )
-
 
 print("Model file found!")
 print("Scaler file found!")
 print("Frontend file found!")
-
-
-# ==========================================================
-# LOAD MODEL
-# ==========================================================
-
-print("Loading TensorFlow model...")
-
-model = load_model(
-    MODEL_PATH,
-    compile=False
-)
-
-print("Neural network loaded successfully!")
-
-
-# ==========================================================
-# LOAD SCALER
-# ==========================================================
-
-with open(SCALER_PATH, "rb") as f:
-    scaler = pickle.load(f)
-
-print("Scaler loaded successfully!")
-
-
-# ==========================================================
-# DISPLAY SCALER FEATURES
-# ==========================================================
-
-if hasattr(scaler, "feature_names_in_"):
-
-    print("Scaler feature names:")
-
-    for feature in scaler.feature_names_in_:
-        print("-", feature)
+print("TensorFlow model will load when prediction is requested.")
 
 
 # ==========================================================
@@ -152,6 +183,19 @@ def home():
 
 
 # ==========================================================
+# HEALTH CHECK
+# ==========================================================
+
+@app.route("/health", methods=["GET"])
+def health():
+
+    return jsonify({
+        "status": "healthy",
+        "service": "Concrete AI API"
+    }), 200
+
+
+# ==========================================================
 # PREDICTION API
 # ==========================================================
 
@@ -159,6 +203,10 @@ def home():
 def predict():
 
     try:
+
+        print("=" * 60)
+        print("PREDICTION REQUEST RECEIVED")
+        print("=" * 60)
 
         # --------------------------------------------------
         # GET JSON
@@ -172,7 +220,6 @@ def predict():
                 "success": False,
                 "error": "No JSON data was received."
             }), 400
-
 
         # --------------------------------------------------
         # READ VALUES
@@ -189,7 +236,6 @@ def predict():
         fine = float(data["fine"])
         age = float(data["age"])
 
-
         # --------------------------------------------------
         # VALUES IN TRAINING ORDER
         # --------------------------------------------------
@@ -205,18 +251,23 @@ def predict():
             age
         ]
 
+        # --------------------------------------------------
+        # LOAD SCALER
+        # --------------------------------------------------
+
+        current_scaler = load_scaler()
 
         # --------------------------------------------------
-        # USE EXACT SCALER COLUMN NAMES
+        # CREATE DATAFRAME
         # --------------------------------------------------
 
         if hasattr(
-            scaler,
+            current_scaler,
             "feature_names_in_"
         ):
 
             expected_columns = list(
-                scaler.feature_names_in_
+                current_scaler.feature_names_in_
             )
 
             if len(expected_columns) != len(values):
@@ -249,21 +300,27 @@ def predict():
                 ]
             )
 
-
         # --------------------------------------------------
         # SCALE
         # --------------------------------------------------
 
-        input_scaled = scaler.transform(
+        input_scaled = current_scaler.transform(
             input_data
         )
 
+        print("Input scaled successfully!")
 
         # --------------------------------------------------
-        # PREDICT
+        # LOAD TENSORFLOW MODEL
         # --------------------------------------------------
 
-        prediction = model.predict(
+        current_model = load_tensorflow_model()
+
+        # --------------------------------------------------
+        # PREDICTION
+        # --------------------------------------------------
+
+        prediction = current_model.predict(
             input_scaled,
             verbose=0
         )
@@ -272,39 +329,32 @@ def predict():
             prediction[0][0]
         )
 
+        print("Predicted strength:", strength)
 
         # --------------------------------------------------
         # GRADE
         # --------------------------------------------------
 
         if strength < 20:
-
             grade = "Below C20"
 
         elif strength < 25:
-
             grade = "C20"
 
         elif strength < 30:
-
             grade = "C25"
 
         elif strength < 35:
-
             grade = "C30"
 
         elif strength < 40:
-
             grade = "C35"
 
         elif strength < 50:
-
             grade = "C40"
 
         else:
-
             grade = "High Strength Concrete"
-
 
         # --------------------------------------------------
         # RECOMMENDATION
@@ -344,7 +394,6 @@ def predict():
                 "through laboratory testing and design."
             )
 
-
         # --------------------------------------------------
         # RETURN RESULT
         # --------------------------------------------------
@@ -364,7 +413,6 @@ def predict():
 
         }), 200
 
-
     # ======================================================
     # MISSING FIELD
     # ======================================================
@@ -380,7 +428,6 @@ def predict():
 
         }), 400
 
-
     # ======================================================
     # INVALID VALUE
     # ======================================================
@@ -395,7 +442,6 @@ def predict():
             f"Invalid input value: {str(e)}"
 
         }), 400
-
 
     # ======================================================
     # OTHER ERROR
